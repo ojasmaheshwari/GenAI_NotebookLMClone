@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <title>NotebookLM Clone</title>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      background: #0f172a;
+      color: white;
+      min-height: 100vh;
+      padding: 40px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 40px;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    h2 {
+      margin-bottom: 16px;
+      font-size: 24px;
+    }
+
+    input[type="file"] {
+      margin-bottom: 16px;
+      color: white;
+    }
+
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 14px;
+      border-radius: 10px;
+      border: none;
+      outline: none;
+      resize: vertical;
+      margin-bottom: 16px;
+      font-size: 15px;
+    }
+
+    .status {
+      margin-top: 14px;
+      color: #93c5fd;
+    }
+
+    .answer {
+      margin-top: 20px;
+      background: #111827;
+      padding: 18px;
+      border-radius: 12px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+
+    .sources {
+      margin-top: 20px;
+    }
+
+    .source-item {
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 10px;
+      margin-top: 10px;
+      border: 1px solid #334155;
+    }
+
+    .collection {
+      margin-top: 10px;
+      color: #22c55e;
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .loading {
+      margin-top: 10px;
+      color: #facc15;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h1>NotebookLM Clone</h1>
+
+    <!-- Upload Section -->
+    <div class="card">
+      <h2>Upload Document</h2>
+
+      <input type="file" id="fileInput" />
+
+      <br>
+
+      <button id="uploadBtn">
+        Upload & Index
+      </button>
+
+      <div class="loading" id="uploadLoading"></div>
+
+      <div class="status" id="uploadStatus"></div>
+
+      <div class="collection" id="collectionName"></div>
+    </div>
+
+    <!-- Chat Section -->
+    <div class="card">
+      <h2>Ask Questions</h2>
+
+      <textarea
+        id="questionInput"
+        placeholder="Ask something about the uploaded document..."
+      ></textarea>
+
+      <button id="askBtn">
+        Ask Question
+      </button>
+
+      <div class="loading" id="askLoading"></div>
+
+      <div class="answer" id="answerBox">
+        Answer will appear here...
+      </div>
+
+      <div class="sources" id="sourcesBox"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const uploadBtn = document.getElementById("uploadBtn");
+    const askBtn = document.getElementById("askBtn");
+
+    const fileInput = document.getElementById("fileInput");
+    const questionInput = document.getElementById("questionInput");
+
+    const uploadStatus = document.getElementById("uploadStatus");
+    const collectionNameDiv = document.getElementById("collectionName");
+
+    const answerBox = document.getElementById("answerBox");
+    const sourcesBox = document.getElementById("sourcesBox");
+
+    const uploadLoading = document.getElementById("uploadLoading");
+    const askLoading = document.getElementById("askLoading");
+
+    let currentCollection = null;
+
+    // =========================================
+    // Upload Document
+    // =========================================
+
+    uploadBtn.addEventListener("click", async () => {
+
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert("Please select a file");
+        return;
+      }
+
+      try {
+
+        uploadLoading.innerText = "Uploading and indexing document...";
+        uploadStatus.innerText = "";
+
+        uploadBtn.disabled = true;
+
+        const formData = new FormData();
+
+        formData.append("file", file);
+
+        const response = await fetch("/upload", {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await response.json();
+
+        uploadLoading.innerText = "";
+
+        if (!response.ok) {
+          throw new Error(data.error || "Upload failed");
+        }
+
+        currentCollection = data.collectionName;
+
+        uploadStatus.innerText =
+          `Document indexed successfully (${data.chunks} chunks)`;
+
+        collectionNameDiv.innerText =
+          `Collection: ${currentCollection}`;
+
+      } catch (err) {
+
+        uploadLoading.innerText = "";
+
+        uploadStatus.innerText = err.message;
+
+      } finally {
+
+        uploadBtn.disabled = false;
+
+      }
+
+    });
+
+    // =========================================
+    // Ask Question
+    // =========================================
+
+    askBtn.addEventListener("click", async () => {
+
+      const question = questionInput.value.trim();
+
+      if (!question) {
+        alert("Please enter a question");
+        return;
+      }
+
+      if (!currentCollection) {
+        alert("Please upload a document first");
+        return;
+      }
+
+      try {
+
+        askLoading.innerText = "Generating answer...";
+
+        askBtn.disabled = true;
+
+        answerBox.innerText = "";
+        sourcesBox.innerHTML = "";
+
+        const response = await fetch("ask", {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            question,
+            collectionName: currentCollection
+          })
+        });
+
+        const data = await response.json();
+
+        askLoading.innerText = "";
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to generate answer");
+        }
+
+        answerBox.innerText = data.answer;
+
+        // =========================================
+        // Sources
+        // =========================================
+
+        const heading = document.createElement("h3");
+
+        heading.innerText = "Sources";
+
+        sourcesBox.appendChild(heading);
+
+        data.sources.forEach((source) => {
+
+          const div = document.createElement("div");
+
+          div.className = "source-item";
+
+          div.innerHTML = `
+            <strong>Page:</strong> ${source.page}
+            <br><br>
+            ${source.preview}
+          `;
+
+          sourcesBox.appendChild(div);
+
+        });
+
+      } catch (err) {
+
+        askLoading.innerText = "";
+
+        answerBox.innerText = err.message;
+
+      } finally {
+
+        askBtn.disabled = false;
+
+      }
+
+    });
+  </script>
+
+</body>
+</html>
