@@ -1,11 +1,9 @@
 import "dotenv/config";
 import express from "express";
 import multer from "multer";
-import fs from "fs";
 import path from "path";
 
 import {PDFLoader} from "@langchain/community/document_loaders/fs/pdf";
-import {TextLoader} from "langchain/document_loaders/fs/text";
 
 import {RecursiveCharacterTextSplitter} from "langchain/text_splitter";
 
@@ -18,7 +16,7 @@ import cors from "cors";
 const app = express();
 
 app.use(express.json());
-app.use(cors())
+app.use(cors());
 
 const PORT = 3000;
 
@@ -68,7 +66,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 			});
 		}
 
-		const filePath = req.file.path;
 		const originalName = req.file.originalname;
 
 		let docs;
@@ -78,11 +75,24 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 		// ==============================
 
 		if (originalName.endsWith(".pdf")) {
-			const loader = new PDFLoader(filePath);
+			const blob = new Blob([req.file.buffer], {
+				type: "application/pdf",
+			});
+
+			const loader = new PDFLoader(blob);
+
 			docs = await loader.load();
 		} else if (originalName.endsWith(".txt")) {
-			const loader = new TextLoader(filePath);
-			docs = await loader.load();
+			const text = req.file.buffer.toString("utf-8");
+
+			docs = [
+				{
+					pageContent: text,
+					metadata: {
+						source: originalName,
+					},
+				},
+			];
 		} else {
 			return res.status(400).json({
 				error: "Only PDF and TXT files are supported",
@@ -114,12 +124,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 			apiKey: process.env.QDRANT_API_KEY,
 			collectionName,
 		});
-
-		// ==============================
-		// Cleanup
-		// ==============================
-
-		fs.unlinkSync(filePath);
 
 		res.json({
 			success: true,
